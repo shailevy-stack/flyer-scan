@@ -357,7 +357,7 @@ Schema:
   "description": "Short description or lineup, max 2 lines"
 }
 
-If a field is unknown, use null. Date must be ISO format YYYY-MM-DD. Time must be 24h HH:MM format.`,
+If a field is unknown, use null. Date must be ISO format YYYY-MM-DD. Time must be 24h HH:MM format. If the year is not stated, default to ${new Date().getFullYear()}. If the time is not stated, default to 20:00.`,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: currentMediaType, data: currentImageBase64 } },
           { type: 'text', text: 'Extract the event details as JSON.' }
