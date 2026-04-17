@@ -125,10 +125,6 @@
       <svg viewBox="0 0 24 24" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       Gallery
     </button>
-    <button class="btn primary" id="scan-btn" disabled>
-      <svg viewBox="0 0 24 24" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-      Scan Event
-    </button>
   </div>
 
   <div class="error-msg" id="error-msg"></div>
@@ -192,7 +188,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const dropZone = $('drop-zone'), previewImg = $('preview-img'), dropText = $('drop-text');
-const scanBtn = $('scan-btn'), cameraBtn = $('camera-btn'), galleryBtn = $('gallery-btn');
+const cameraBtn = $('camera-btn'), galleryBtn = $('gallery-btn');
 const fileInput = $('file-input'), cameraInput = $('camera-input');
 const loadingState = $('loading-state'), resultCard = $('result-card'), eventText = $('event-text');
 const errorMsg = $('error-msg'), statusDot = $('status-dot'), toast = $('toast');
@@ -260,12 +256,11 @@ function setImage(file) {
     previewImg.src = dataUrl;
     previewImg.style.display = 'block';
     dropZone.classList.add('has-image');
-    dropText.querySelector('.drop-label').textContent = 'Image loaded';
-    dropText.querySelector('.drop-sub').textContent = 'tap Scan Event';
-    scanBtn.disabled = false;
+    dropText.querySelector('.drop-label').textContent = 'scanning...';
+    dropText.querySelector('.drop-sub').textContent = '';
     resultCard.classList.remove('visible');
-    loadingState.classList.remove('visible');
     errorMsg.classList.remove('visible');
+    scanImage();
   };
   reader.readAsDataURL(file);
 }
@@ -284,19 +279,10 @@ dropZone.addEventListener('drop', e => {
 });
 
 function formatEventText(raw) {
-  return raw.trim().split('\n').map(line => {
-    const t = line.trim();
-    if (!t) return '';
-    if (/^(event|title|name|date|time|when|where|location|venue):/i.test(t) ||
-        /^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t) ||
-        /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(t)) {
-      return `<span class="highlight">${t}</span>`;
-    }
-    return t;
-  }).join('\n').trim();
+  return raw.trim();
 }
 
-scanBtn.addEventListener('click', async () => {
+async function scanImage() {
   if (!currentImageBase64) return;
   const key = getKey();
   if (!key) { init(); return; }
@@ -304,7 +290,6 @@ scanBtn.addEventListener('click', async () => {
   loadingState.classList.add('visible');
   resultCard.classList.remove('visible');
   errorMsg.classList.remove('visible');
-  scanBtn.disabled = true;
 
   try {
     const res = await fetch('https://green-bread-d5ef.shailevy.workers.dev/', {
@@ -333,7 +318,7 @@ Write date in full so iOS detects it as a calendar link. Omit unknown fields.`,
     if (!res.ok) throw new Error(data.error?.message || 'API error');
     const text = data.content?.[0]?.text || '';
     if (!text.trim()) throw new Error('No event details found');
-    eventText.innerHTML = formatEventText(text);
+    eventText.textContent = formatEventText(text);
     resultCard.classList.add('visible');
     showToast('event extracted');
   } catch (err) {
@@ -341,9 +326,10 @@ Write date in full so iOS detects it as a calendar link. Omit unknown fields.`,
     errorMsg.classList.add('visible');
   } finally {
     loadingState.classList.remove('visible');
-    scanBtn.disabled = false;
+    dropText.querySelector('.drop-label').textContent = 'scan another';
+    dropText.querySelector('.drop-sub').textContent = 'tap to pick a new image';
   }
-});
+}
 
 init();
 </script>
