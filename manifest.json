@@ -2,7 +2,7 @@
   "name": "Flyer Scan",
   "short_name": "Flyer Scan",
   "description": "Scan event flyers and extract calendar details",
-  "start_url": "/",
+ "start_url": "/flyer-scan/",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
