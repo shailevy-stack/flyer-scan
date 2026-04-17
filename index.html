@@ -138,12 +138,13 @@
   <div class="result-card" id="result-card">
     <div class="result-header">
       <span class="result-title">Event detected</span>
-      <span class="result-badge">tap date to save</span>
     </div>
     <div class="event-text" id="event-text"></div>
-    <div class="copy-hint">
-      <svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M9 9H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-3"/><rect x="9" y="3" width="12" height="12" rx="2"/></svg>
-      long-press the date to create a calendar entry
+    <div style="padding: 0 18px 18px;">
+      <button class="btn primary" id="add-cal-btn" style="width:100%; grid-column:unset;">
+        <svg viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg>
+        Add to Calendar
+      </button>
     </div>
   </div>
 </main>
@@ -278,9 +279,55 @@ dropZone.addEventListener('drop', e => {
   if (f && f.type.startsWith('image/')) setImage(f);
 });
 
-function formatEventText(raw) {
-  return raw.trim();
+let currentEvent = null;
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function toIcsDate(dateStr, timeStr) {
+  // dateStr: "2026-05-08", timeStr: "20:00"
+  const d = new Date(dateStr + 'T' + (timeStr || '00:00') + ':00');
+  return d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + 'T' +
+         pad(d.getHours()) + pad(d.getMinutes()) + '00';
 }
+
+function buildIcs(ev) {
+  const start = toIcsDate(ev.date, ev.time);
+  // default duration 2h if no end time
+  const endDate = new Date(ev.date + 'T' + (ev.time || '00:00') + ':00');
+  endDate.setHours(endDate.getHours() + 2);
+  const end = endDate.getFullYear() + pad(endDate.getMonth()+1) + pad(endDate.getDate()) + 'T' +
+              pad(endDate.getHours()) + pad(endDate.getMinutes()) + '00';
+  const desc = (ev.description || '').replace(/\n/g, '\\n');
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Flyer Scan//EN',
+    'BEGIN:VEVENT',
+    'UID:' + Date.now() + '@flyerscan',
+    'SUMMARY:' + (ev.title || 'Event'),
+    'DTSTART:' + start,
+    'DTEND:' + end,
+    'LOCATION:' + (ev.venue ? ev.venue + (ev.city ? ', ' + ev.city : '') : (ev.city || '')),
+    'DESCRIPTION:' + desc,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+}
+
+function downloadIcs(ev) {
+  const ics = buildIcs(ev);
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (ev.title || 'event').replace(/[^a-z0-9]/gi, '_') + '.ics';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('add-cal-btn').addEventListener('click', () => {
+  if (currentEvent) downloadIcs(currentEvent);
+});
 
 async function scanImage() {
   if (!currentImageBase64) return;
@@ -297,28 +344,42 @@ async function scanImage() {
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-opus-4-5',
-        max_tokens: 400,
-        system: `Extract event info from flyers. Return ONLY plain text, no markdown. Format:
+        max_tokens: 500,
+        system: `Extract event details from flyer images. Return ONLY valid JSON, no markdown, no explanation.
 
-[Event Name]
-[Day, DD Month YYYY] at [HH:MM]
-[Venue]
-[City]
+Schema:
+{
+  "title": "Event name",
+  "date": "YYYY-MM-DD",
+  "time": "HH:MM",
+  "venue": "Venue name",
+  "city": "City",
+  "description": "Short description or lineup, max 2 lines"
+}
 
-[Lineup or description, max 2 lines]
-
-Write date in full so iOS detects it as a calendar link. Omit unknown fields.`,
+If a field is unknown, use null. Date must be ISO format YYYY-MM-DD. Time must be 24h HH:MM format.`,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: currentMediaType, data: currentImageBase64 } },
-          { type: 'text', text: 'Extract the event details.' }
+          { type: 'text', text: 'Extract the event details as JSON.' }
         ]}]
       })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'API error');
-    const text = data.content?.[0]?.text || '';
-    if (!text.trim()) throw new Error('No event details found');
-    eventText.textContent = formatEventText(text);
+    const raw = data.content?.[0]?.text || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const ev = JSON.parse(clean);
+    currentEvent = ev;
+
+    // Display summary
+    const lines = [
+      ev.title,
+      [ev.date, ev.time].filter(Boolean).join(' at '),
+      ev.venue,
+      ev.city,
+      ev.description
+    ].filter(Boolean);
+    eventText.textContent = lines.join('\n');
     resultCard.classList.add('visible');
     showToast('event extracted');
   } catch (err) {
